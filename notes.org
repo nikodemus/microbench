@@ -1,0 +1,13 @@
+
+* Main measurement: iterations per second
+* TODO Grouping benchmarks manually  
+* Visualisations
+*** DONE Bar-chart for comparing benchamrks to each other
+*** TODO Line-chart for comparing one benchmark across time
+*** TODO Bar-chart for comparing implementations
+* TODO Port to clisp, cmucl, and ccl
+* TODO SAVE-BINARY
+  A command to save the current implementation under microbench/bin/
+  for future use, with just enough code to run the benchmarks loaded.
+* TODO Run benchmarks using saved binaries.
+
