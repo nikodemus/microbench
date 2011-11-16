@@ -8,7 +8,11 @@
 ;;;; Or both ends, or something.
 
 (defpackage :microbench
-  (:use :cl :alexandria :cl-who))
+  (:use :cl :alexandria :cl-who)
+  (:export
+   #:html-report
+   #:run-benchmarks
+   #:select-benchmarks))
 
 (in-package :microbench)
 
@@ -73,7 +77,7 @@ IF-DOES-NOT-EXIST defaults to NIL."
 (defun load-user-conf ()
   (setf *hostname-prefixes* nil
         *benchmark-datadir* nil)
-  (dolist (conf (read-file-into-list (microbench-config-pathname)))
+  (dolist (conf (read-file-into-list (user-conf-pathname)))
     (destructuring-ecase conf
       ((:hostname-prefixes &rest prefixes)
        (setf *hostname-prefixes* prefixes))
@@ -84,89 +88,40 @@ IF-DOES-NOT-EXIST defaults to NIL."
 
 ;;;; Defining Benchmarks and accessing them
 
-(defmacro open-code ((n) &body body)
-  `(progn
-     ,@(loop repeat n
-             collect `(progn ,@body))))
-
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defvar *benchmarks* (make-hash-table)))
+  (defparameter *benchmark-info* (make-hash-table))
+  (defparameter *benchmark-names* nil))
 
 (defun get-benchmark (name)
-  (let ((info (or (gethash name *benchmarks*)
+  (let ((info (or (gethash name *benchmark-info*)
                   (error "Unknown benchmark: ~S" name))))
     (values (fdefinition (first info)) (rest info))))
 
 (defun list-all-benchmarks ()
-  (sort (hash-table-keys *benchmarks*) #'string<))
+  (hash-table-keys *benchmark-info*))
 
-(defmacro defbenchmark (name (lambda-list arguments &rest options)
+(eval-when (:load-toplevel :compile-toplevel :execute)
+  (defun quote-plist-values (plist)
+    (let (copy)
+      (doplist (key val plist)
+        (push key copy)
+        (push (list 'quote val) copy))
+      (reverse copy))))
+
+(defmacro defbenchmark (name (&rest options &key let declare &allow-other-keys)
                         &body body)
   (let ((fname (symbolicate '#:benchmark- name)))
+    (remove-from-plistf options :let :declare)
     (with-gensyms (iterations)
       `(progn
-         (defun ,fname (,iterations ,@lambda-list)
+         (defun ,fname (,iterations)
            (declare (fixnum ,iterations))
-           (loop repeat ,iterations
-                 do (consume-result (locally ,@body))))
-         (setf (gethash ',name *benchmarks*)
-               (list ',fname :arguments (list ,@arguments) ,@options))))))
-
-(declaim (notinline consume-results))
-(defun consume-result (arg)
-  (declare (ignore arg))
-  nil)
-
-;;;; Sample Benchmarks
-
-(defun generic+ (x y z)
-  (let ((r x))
-    (open-code (100)
-      (setf r (+ r
-                 (+ x x)
-                 (+ x y)
-                 (+ x z)
-                 (+ y y)
-                 (+ y z)
-                 (+ z z))))
-    r))
-
-(defun fixnum+ (x y z)
-  (declare (fixnum x y z))
-  (let ((r x))
-    (open-code (100)
-      (setf r (logand most-positive-fixnum
-                   (+ r
-                      (+ x x)
-                      (+ x y)
-                      (+ x z)
-                      (+ y y)
-                      (+ y z)
-                      (+ z z)))))
-    r))
-
-(defbenchmark generic+[fixnums] ((x y z) (21236 -22313 2412))
-  (generic+ x y z))
-
-(defbenchmark generic+[single-floats] ((x y z) (123.0f0 -9087.0f0 2.1f0))
-  (generic+ x y z))
-
-(defbenchmark generic+[double-floats] ((x y z) (123.0d0 -9087.0d0 2.1d0))
-  (generic+ x y z))
-
-(defbenchmark generic+[complex] ((x y z) ((complex 12 -12)
-                                          (complex 123 333)
-                                          (complex 202 -5)))
-  (generic+ x y z))
-
-(defbenchmark generic+[bignum] ((x y z)
-                                ((1+ most-positive-fixnum)
-                                 (1+ most-positive-fixnum)
-                                 (1+ most-positive-fixnum)))
-  (generic+ x y z))
-
-(defbenchmark fixnum+ ((x y z) (21236 -22313 2412))
-  (fixnum+ x y z))
+           (let ,let
+             (declare ,@declare)
+             (loop repeat ,iterations
+                   do (locally ,@body))))
+         (setf (gethash ',name *benchmark-info*)
+               (list ',fname ,@(quote-plist-values options)))))))
 
 (defun round-up (n)
   (loop for i = 1 then (* i 10)
@@ -244,10 +199,10 @@ IF-DOES-NOT-EXIST defaults to NIL."
           (let ((real-total (/ (reduce #'+ real-time) internal-time-units-per-second))
                 (run-total (/ (reduce #'+ run-time) internal-time-units-per-second)))
             (format *trace-output*
-                    ", ~,2Fs run-time, ~,2F% CPU~%  => ~,2Fk/s.~%"
+                    ", ~,2Fs run-time, ~,2F% CPU~%  => ~,2FM/s.~%"
                     run-total
                     (* 100.0 (/ run-total real-total))
-                    (/ (/ (* runs iterations) 1000.0) run-total)))
+                    (/ (/ (* runs iterations) 1f6) run-total)))
           (finish-output *trace-output*))
         (list name :iterations iterations
                    :runs runs
@@ -315,10 +270,13 @@ IF-DOES-NOT-EXIST defaults to NIL."
                  :escape t))))
     data))
 
-(defun run-all-benchmarks (&key run-time real-time iterations runs save (if-exists :error)
-                                (verbose t))
+(defun run-benchmarks (&key run-time real-time iterations runs save (if-exists :error)
+                            (verbose t)
+                            (select nil))
   (let (results)
-    (dolist (name (list-all-benchmarks))
+    (dolist (name (if select
+                      (ensure-list select)
+                      (list-all-benchmarks)))
       (let ((res (run-benchmark name
                                 :runs runs
                                 :run-time run-time :real-time real-time
@@ -363,27 +321,44 @@ IF-DOES-NOT-EXIST defaults to NIL."
                                                        internal-time-units-per-second))
                                         (total-iterations (* (getf benchmark :iterations)
                                                              (getf benchmark :runs))))
-                                   `(array ,(string-capitalize name)
-                                           ,(/ (/ total-iterations 1000.0) total-time))))
+                                   `(array ,(string-downcase name)
+                                           ,(/ (/ total-iterations 1f6) total-time))))
                                benchmark-set)))))
               benchmarks)))
 
-(defun sort-benchmarks (dataset)
+(defun benchmark-ips (benchmark time)
+  (let* ((plist (cdr benchmark))
+         (total-time (/ (reduce #'+ (getf plist time))
+                        internal-time-units-per-second))
+         (total-iterations (* (getf plist :iterations)
+                              (getf plist :runs))))
+    (coerce (/ total-iterations total-time) 'single-float)))
+
+(defun sort-benchmarks (dataset sort)
   (let ((table (make-hash-table :test #'equal)))
     (dolist (data dataset)
       (let* ((plist (cdr data))
              (key (list (getf plist :hostname) (getf plist :os) (getf plist :arch)
                         (getf plist :lisp) (getf plist :version))))
         (push data (gethash key table))))
-    (hash-table-values table)))
+    (mapcar (ecase sort
+              (:name
+               (lambda (set)
+                 (sort set #'string< :key #'car)))
+              ((:run-time :real-time)
+               (lambda (set)
+                 (sort set #'> :key (lambda (set)
+                                      (benchmark-ips set sort))))))
+            (hash-table-values table))))
 
-(defun html-report (dataset pathname &key (type :barchart) (log-scale nil))
+(defun html-report (dataset pathname &key (type :barchart) (log-scale nil)
+                                          (sort :run-time))
   (ecase type
     (:barchart
-     (html-barchart dataset pathname log-scale))))
+     (html-barchart dataset pathname log-scale sort))))
 
-(defun html-barchart (dataset pathname log-scale)
-  (let* ((sets (sort-benchmarks dataset))
+(defun html-barchart (dataset pathname log-scale sort)
+  (let* ((sets (sort-benchmarks dataset sort))
          (divs (loop for i from 0 below (length sets)
                      collect (format nil "chart_~A" i))))
     (with-open-file (stream pathname
@@ -413,7 +388,14 @@ IF-DOES-NOT-EXIST defaults to NIL."
                                                (+ "chart_" (++ i)))))))
                              (chart.draw data (create :title set.title
                                                       :legend "none"
-                                                      :v-axis (create :log-scale log-scale)))))))))))
+                                                      :font-size 10
+                                                      :height 400
+                                                      :h-axis (create :max-alternation 1
+                                                                      :show-text-every 1
+                                                                      :slanted-text true
+                                                                      :slanted-text-angle 30)
+                                                      :v-axis (create :log-scale log-scale
+                                                                      :title "Mi/s")))))))))))
          (:body
           (dolist (div divs)
             (htm

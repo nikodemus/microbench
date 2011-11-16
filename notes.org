@@ -1,6 +1,7 @@
 
 * Main measurement: iterations per second
-* TODO Grouping benchmarks manually  
+* TODO Grouping benchmarks manually
+* TODO When running multiple runs over multiple benchmarks, randomize the order for each run
 * Visualisations
 *** DONE Bar-chart for comparing benchamrks to each other
 *** TODO Line-chart for comparing one benchmark across time
