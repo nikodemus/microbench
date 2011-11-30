@@ -386,17 +386,6 @@ IF-DOES-NOT-EXIST defaults to NIL."
              (string< (benchmark-name b1)
                       (benchmark-name b2))))))
 
-(defun benchmark-group/ips< (b1 b2)
-  (let ((g1 (benchmark-group b1) )
-        (g2 (benchmark-group b2)))
-    (or (string< g1 g2)
-        (and (string= g1 g2)
-             (> (nem))
-             (string< (benchmark-name b1)
-                      (benchmark-name b2)))))
-  (string< (benchmark-group b1)
-           (benchmark-group b2)))
-
 (defun sort-benchmarks (dataset sort)
   (let ((table (make-hash-table :test #'equal))
         (base-order nil))
