@@ -118,8 +118,9 @@ IF-DOES-NOT-EXIST defaults to NIL."
            (declare (fixnum ,iterations))
            (let ,let
              (declare ,@declare)
-             (loop repeat ,iterations
-                   do (locally ,@body))))
+             (loop repeat (truncate ,iterations 2)
+                   do (locally ,@body)
+                      (locally ,@body))))
          (setf (gethash ',name *benchmark-info*)
                (list ',fname ,@(quote-plist-values options)))))))
 
@@ -158,8 +159,18 @@ IF-DOES-NOT-EXIST defaults to NIL."
 (defun before-benchmark ()
   #+sbcl
   (sb-ext:gc :full t)
-  #-sbcl
+  #+ccl
+  (ccl:gc)
   nil)
+
+(defun machine-arch ()
+  #+sbcl
+  (machine-type)
+  #-sbcl
+  (progn
+    #+x86-64 (return-from machine-arch "X86-64")
+    #+x86 (return-from machine-arch "X86")
+    (error "Unknown arch.")))
 
 (defun run-benchmark (name &key (arguments t) run-time real-time runs iterations
                                 (verbose t))
@@ -208,9 +219,10 @@ IF-DOES-NOT-EXIST defaults to NIL."
                    :runs runs
                    :run-time run-time
                    :real-time real-time
+                   :scale internal-time-units-per-second
                    :timestamp ut
                    :hostname (hostname)
-                   :arch (machine-type)
+                   :arch (machine-arch)
                    :os (software-type)
                    :lisp (lisp-implementation-type)
                    :version (lisp-implementation-version))))))
@@ -250,7 +262,7 @@ IF-DOES-NOT-EXIST defaults to NIL."
 
 (defun benchmark-pathname (data)
   (apply #'make-benchmark-pathname :allow-other-keys t
-                                   :date (datestamp (getf (cdr data) :timestamp))
+                                   :date (datestamp (benchmark-timestamp data))
                                    :benchmark data))
 
 (defun save-benchmark (data &key (if-exists :error))
@@ -301,57 +313,127 @@ IF-DOES-NOT-EXIST defaults to NIL."
           (directory
            (apply #'make-benchmark-pathname args))))
 
-(defun js-k/s (benchmarks)
-  `(array
-    ,@(mapcar (lambda (benchmark-set)
-                (let ((x (cdar benchmark-set)))
-                  `(create
-                    :title
-                    ,(format nil "~A ~A ~A/~A (~A)"
-                             (getf x :lisp)
-                             (getf x :version)
-                             (getf x :os)
-                             (string-downcase (getf x :arch))
-                             (getf x :hostname))
-                    :data
-                    (array
-                     ,@(mapcar (lambda (benchmark)
-                                 (let* ((name (pop benchmark))
-                                        (total-time (/ (reduce #'+ (getf benchmark :run-time))
-                                                       internal-time-units-per-second))
-                                        (total-iterations (* (getf benchmark :iterations)
-                                                             (getf benchmark :runs))))
-                                   `(array ,(string-downcase name)
-                                           ,(/ (/ total-iterations 1f6) total-time))))
-                               benchmark-set)))))
-              benchmarks)))
+(macrolet ((def (thing)
+             `(defun ,(symbolicate '#:benchmark- thing) (benchmark)
+                (getf (cdr benchmark) ,thing))))
+  (def :lisp)
+  (def :version)
+  (def :os)
+  (def :arch)
+  (def :hostname)
+  (def :run-time)
+  (def :scale)
+  (def :iterations)
+  (def :runs)
+  (def :timestamp))
 
-(defun benchmark-ips (benchmark time)
+(defun benchmark-name (data)
+  (car data))
+
+(defun benchmark-group (data)
+  (getf (nth-value 1 (get-benchmark (benchmark-name data))) :group))
+
+(defun min* (a b)
+  (if a
+      (min a b)
+      b))
+
+(defun max* (a b)
+  (if a
+      (max a b)
+      b))
+
+(defun js-k/s (benchmarks)
+  (let (min max)
+    (values `(array
+              ,@(mapcar (lambda (benchmark-set)
+                          (let ((x (car benchmark-set)))
+                            `(create
+                              :title
+                              ,(format nil "~A ~A ~A/~A (~A)"
+                                       (benchmark-lisp x)
+                                       (benchmark-version x)
+                                       (benchmark-os x)
+                                       (string-downcase (benchmark-arch x))
+                                       (benchmark-hostname x))
+                              :data
+                              (array
+                               ,@(mapcar (lambda (b)
+                                           (let ((name (benchmark-name b))
+                                                 (ips (benchmark-ips b :run-time 1f6)))
+                                             (setf min (min* min ips)
+                                                   max (max* max ips))
+                                             `(array ,(string-downcase name)
+                                                     ,ips)))
+                                         benchmark-set)))))
+                        benchmarks))
+            min
+            max)))
+
+(defun benchmark-ips (benchmark time &optional (scale 1))
   (let* ((plist (cdr benchmark))
          (total-time (/ (reduce #'+ (getf plist time))
-                        internal-time-units-per-second))
-         (total-iterations (* (getf plist :iterations)
-                              (getf plist :runs))))
-    (coerce (/ total-iterations total-time) 'single-float)))
+                        (benchmark-scale benchmark)))
+         (total-iterations (* (benchmark-iterations benchmark)
+                              (benchmark-runs benchmark))))
+    (coerce (/ (/ total-iterations scale) total-time) 'single-float)))
+
+(defun benchmark-name< (b1 b2)
+  (let ((g1 (benchmark-group b1) )
+        (g2 (benchmark-group b2)))
+    (or (string< g1 g2)
+        (and (string= g1 g2)
+             (string< (benchmark-name b1)
+                      (benchmark-name b2))))))
+
+(defun benchmark-group/ips< (b1 b2)
+  (let ((g1 (benchmark-group b1) )
+        (g2 (benchmark-group b2)))
+    (or (string< g1 g2)
+        (and (string= g1 g2)
+             (> (nem))
+             (string< (benchmark-name b1)
+                      (benchmark-name b2)))))
+  (string< (benchmark-group b1)
+           (benchmark-group b2)))
 
 (defun sort-benchmarks (dataset sort)
-  (let ((table (make-hash-table :test #'equal)))
+  (let ((table (make-hash-table :test #'equal))
+        (base-order nil))
     (dolist (data dataset)
-      (let* ((plist (cdr data))
-             (key (list (getf plist :hostname) (getf plist :os) (getf plist :arch)
-                        (getf plist :lisp) (getf plist :version))))
+      (let ((key (list (benchmark-hostname data)
+                       (benchmark-os data)
+                       (benchmark-arch data)
+                       (benchmark-lisp data)
+                       (benchmark-version data))))
         (push data (gethash key table))))
     (mapcar (ecase sort
               (:name
                (lambda (set)
-                 (sort set #'string< :key #'car)))
+                 (sort set #'benchmark-name<)))
               ((:run-time :real-time)
                (lambda (set)
-                 (sort set #'> :key (lambda (set)
-                                      (benchmark-ips set sort))))))
+                 (if base-order
+                     (sort set (lambda (b1 b2)
+                                 (let ((g1 (benchmark-group b1) )
+                                       (g2 (benchmark-group b2)))
+                                   (or (string< g1 g2)
+                                       (and (string= g1 g2)
+                                            (< (position (benchmark-name b1) base-order)
+                                               (position (benchmark-name b2) base-order)))))))
+                     (let ((order
+                             (sort set (lambda (b1 b2)
+                                         (let ((g1 (benchmark-group b1) )
+                                               (g2 (benchmark-group b2)))
+                                           (or (string< g1 g2)
+                                               (and (string= g1 g2)
+                                                    (> (benchmark-ips b1 sort)
+                                                       (benchmark-ips b2 sort)))))))))
+                       (setf base-order (mapcar #'benchmark-name order))
+                       order)))))
             (hash-table-values table))))
 
-(defun html-report (dataset pathname &key (type :barchart) (log-scale nil)
+(defun html-report (pathname dataset &key (type :barchart) (log-scale nil)
                                           (sort :run-time))
   (ecase type
     (:barchart
@@ -372,9 +454,12 @@ IF-DOES-NOT-EXIST defaults to NIL."
                    :src "https://www.google.com/jsapi")
           (:script :type "text/javascript"
                    (str
-                    (js:js*
-                     `(defvar benchmarks ,(js-k/s sets))
-                     `(defvar log-scale ,log-scale)))
+                     (multiple-value-bind (js-data min max) (js-k/s sets)
+                       (declare (ignore min))
+                       (js:js*
+                        `(defvar benchmarks ,js-data)
+                        `(defvar max-value ,max)
+                        `(defvar log-scale ,log-scale))))
                    (str
                     (js:js
                      (google.load "visualization" "1" (create :packages (array "corechart")))
@@ -395,10 +480,11 @@ IF-DOES-NOT-EXIST defaults to NIL."
                                                                       :slanted-text true
                                                                       :slanted-text-angle 30)
                                                       :v-axis (create :log-scale log-scale
+                                                                      :min-value 0
+                                                                      :max-value max-value
                                                                       :title "Mi/s")))))))))))
          (:body
           (dolist (div divs)
             (htm
              (:div :id div))))))
       pathname)))
-
