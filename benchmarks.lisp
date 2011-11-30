@@ -1,6 +1,6 @@
 (in-package :microbench)
 
-;;;; Sample Benchmarks
+;;;; GENERIC ARITHMETIC
 
 (defun generic+ (x y)
   (+ x y))
@@ -48,6 +48,8 @@
 
 (defbenchmark generic+[cdcdcd] (:group generic+)
   (generic+ #c(12.123d0 123.123d0) #c(987.987d0 231.231d0)))
+
+;;;; SPECIALIZED ARITHMETIC
 
 (defun fixnum+ (x y)
   (declare (fixnum x y))
@@ -105,14 +107,15 @@
 (defbenchmark double-unsafe-sans-result+ (:group specialized+)
   (double-unsafe-sans-result+ 123.123d0 9870.213d0))
 
-;;; This is a faintly ridiculous amount to get a "fair" comparison to
-;;; benchmarks doing out-of-line calls, but seems about right.
+;;; This is a faintly ridiculous amount of work to get a "fair"
+;;; comparison to benchmarks doing out-of-line calls, but seems about
+;;; right -- for SBCL.
 ;;;
-;;; ...and there's no guarantee that it isn't pessimized for another
-;;; implementation.
+;;; For CCL at least this is a /huge/ pessimization, possibly due to
+;;; the THROW?
 ;;;
-;;; All this really does is goes to show that we need a decent non-micro
-;;; benchmark for FP.
+;;; All this really does is goes to show that we need a decent
+;;; non-micro benchmark for FP.
 (declaim (notinline a-single-float))
 (defun a-single-float ()
   (load-time-value 123.123f0))
@@ -189,7 +192,7 @@
   (when (eql 0 (setf x (logand most-positive-fixnum (fixnum-inline+ x y))))
     (throw 'oops t)))
 
-;;;; Generic Function Call cost
+;;;; GENERIC FUNCTION CALLS
 
 (defun gf-call.0.1 (a)
   a)
@@ -252,3 +255,179 @@
                                   (c2 (a-c2))))
   (gf-call.2c.1 c1)
   (gf-call.2c.1 c2))
+
+;;;; CONSTANT VALUE GENERICS
+
+(defmacro define-constants (n)
+  (let ((fun (intern (format nil "GET-~A-CONSTANT" n)))
+        (test (intern (format nil "~A-CONSTANT-TEST" n)))
+        (var (intern (format nil "*~A-CONSTANT-CLASSES*" n)))
+        (classes nil))
+    `(progn
+       (defgeneric ,fun (x))
+       ,@(loop for i from 1 upto n
+               collect (let ((class (intern (format nil "CONSTANT-CLASS-~S" i))))
+                         (push class classes)
+                         `(progn
+                            (defclass ,class () ())
+                            (defmethod ,fun ((,class ,class))
+                              ,(random most-positive-fixnum)))))
+       (defvar ,var (mapcar #'make-instance
+                            ',classes))
+       (defun ,test (list)
+         (dolist (elt list)
+           (,fun elt)))
+       (,test ,var)
+       (,test ,var)
+       (,test ,var)
+       (defbenchmark ,test (:group gf-calls-misc
+                            :let ((list ,var)))
+         (,test list)))))
+
+(define-constants 1)
+(define-constants 2)
+(define-constants 3)
+(define-constants 4)
+(define-constants 5)
+(define-constants 6)
+(define-constants 7)
+(define-constants 8)
+(define-constants 16)
+(define-constants 32)
+(define-constants 64)
+(define-constants 128)
+(define-constants 512)
+
+;;; ...with 2 args
+(defmacro define-constants/2 (n)
+  (let ((fun (intern (format nil "GET-~A-CONSTANT/2" n)))
+        (test (intern (format nil "~A-CONSTANT-TEST/2" n)))
+        (var (intern (format nil "*~A-CONSTANT-TEST/2*" n)))
+        (classes nil))
+    `(progn
+       (defgeneric ,fun (x y))
+       ,@(loop for i from 1 upto n
+               collect (let ((class1
+                              (intern (format nil "CONSTANT/2-CLASS-~S.1" i)))
+                             (class2
+                              (intern (format nil "CONSTANT/2-CLASS-~S.2" i))))
+                         (push (cons class1 class2) classes)
+                         `(progn
+                            (defclass ,class1 () ())
+                            (defclass ,class2 () ())
+                            (defmethod ,fun ((,class1 ,class1) (,class2 ,class2))
+                              ,(random most-positive-fixnum)))))
+       (defvar ,var
+         (mapcar (lambda (pair)
+                   (cons (make-instance (car pair))
+                         (make-instance (cdr pair))))
+                 '(,@classes)))
+       (defun ,test (list)
+         (dolist (pair list)
+           (,fun (car pair) (cdr pair))))
+       (defbenchmark ,test (:group gf-calls-misc
+                            :let ((list ,var)))
+         (,test list)))))
+
+(define-constants/2 1)
+(define-constants/2 2)
+(define-constants/2 3)
+(define-constants/2 4)
+(define-constants/2 5)
+(define-constants/2 6)
+(define-constants/2 7)
+(define-constants/2 8)
+(define-constants/2 16)
+(define-constants/2 32)
+(define-constants/2 64)
+(define-constants/2 128)
+(define-constants/2 512)
+
+;;;; SLOT ACCESSORS
+
+;;; N classes, 1 slot location, one accessor generic
+(defmacro define-n-classes (n)
+  (let ((slot (format-symbol *package* "N-CLASSES.~A.SLOT" n))
+        (var (format-symbol *package* "*N-CLASSES.~A-INSTANCES*" n))
+        (test (format-symbol *package* "N-CLASSES.~A-RUN" n)))
+    `(progn
+      ,@(loop for i from 1 upto n
+              collect `(defclass ,(format-symbol *package* "N-CLASSES.~A-CLASS.~A" n i)
+                           ()
+                         ((,slot
+                           :initform (random most-positive-fixnum)
+                           :accessor ,slot))))
+      (defvar ,var
+        (loop for i from 1 upto ,n
+                  collect
+                 (make-instance (format-symbol *package* "N-CLASSES.~A-CLASS.~A" ,n i))))
+      (defun ,test (list)
+        (dolist (elt list)
+          (foo (,slot elt))
+          (setf (,slot elt) 42)))
+      (,test ,var)
+      (,test ,var)
+      (,test ,var)
+      (defbenchmark ,(format-symbol *package* "N-CLASSES.~A" n) (:group slot-access
+                                                                 :let ((list ,var)))
+        (,test list)))))
+(define-n-classes 1)
+(define-n-classes 2)
+(define-n-classes 3)
+(define-n-classes 4)
+(define-n-classes 5)
+(define-n-classes 6)
+(define-n-classes 7)
+(define-n-classes 8)
+(define-n-classes 16)
+(define-n-classes 32)
+(define-n-classes 128)
+
+;;; N classes, 2 slot locations, 1 accessor
+(defmacro define-n-classes/2-slots (n)
+  (let ((slot (format-symbol *package* "~A-CLASS/2-SLOT-SLOT" n))
+        (test (format-symbol *package* "~A-CLASS/2-SLOT-RUN" n))
+        (var (format-symbol *package* "*~A-CLASS/2-SLOT-LIST*" n)))
+    `(progn
+       ,@(loop for i from 1 upto n
+               collect `(defclass ,(format-symbol *package*
+                                                  "~A-CLASS/2-SLOT.~A" n i)
+                            ()
+                          ,(if (oddp i)
+                               `((,slot
+                                  :initform (random most-positive-fixnum)
+                                  :accessor ,slot)
+                                 (dummy
+                                  :initform (random most-positive-fixnum)))
+                               `((dummy
+                                  :initform (random most-positive-fixnum))
+                                 (,slot
+                                  :initform (random most-positive-fixnum)
+                                  :accessor ,slot)))))
+       (defvar ,var
+         (loop for i from 1 upto ,n
+               collect
+                  (make-instance
+                   (format-symbol *package*
+                                          "~A-CLASS/2-SLOT.~A"
+                                          ,n i))))
+       (defun ,test (instances)
+         (dolist (elt instances)
+           (foo (,slot elt))
+           (setf (,slot elt) 42)))
+       (,test ,var)
+       (,test ,var)
+       (,test ,var)
+       (defbenchmark ,(format-symbol *package* "~A-CLASSES/2-SLOTS" n) (:group slot-access
+                                                                        :let ((list ,var)))
+         (,test list)))))
+(define-n-classes/2-slots 2)
+(define-n-classes/2-slots 3)
+(define-n-classes/2-slots 4)
+(define-n-classes/2-slots 5)
+(define-n-classes/2-slots 6)
+(define-n-classes/2-slots 7)
+(define-n-classes/2-slots 8)
+(define-n-classes/2-slots 32)
+(define-n-classes/2-slots 128)
+(define-n-classes/2-slots 512)
