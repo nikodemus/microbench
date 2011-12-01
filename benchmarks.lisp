@@ -235,7 +235,7 @@
 (defgeneric gf-call.1.1 (a))
 (defmethod gf-call.1.1 (a)
   a)
-(defbenchmark gf-call.1.1 ()
+(defbenchmark gf-call.1.1 (:group gf-call)
   (gf-call.1.1 t)
   (gf-call.1.1 nil))
 
@@ -243,7 +243,7 @@
 (defmethod gf-call.1.5 (a b c d e)
   (declare (ignore b c d e))
   a)
-(defbenchmark gf-call.1.5 ()
+(defbenchmark gf-call.1.5 (:group gf-call)
   (gf-call.1.5 t t t t t)
   (gf-call.1.5 nil nil nil nil nil))
 
@@ -252,7 +252,8 @@
   a)
 (defmethod gf-call.2b.1 (a)
   a)
-(defbenchmark gf-call.2b.1 (:let ((x (cons t t))))
+(defbenchmark gf-call.2b.1 (:group gf-call
+                            :let ((x (cons t t))))
   (gf-call.2b.1 x)
   (gf-call.2b.1 t))
 
@@ -269,7 +270,8 @@
   a)
 (defmethod gf-call.2c.1 ((a c2))
   a)
-(defbenchmark gf-call.2c.1 (:let ((c1 (a-c1))
+(defbenchmark gf-call.2c.1 (:group gf-call
+                            :let ((c1 (a-c1))
                                   (c2 (a-c2))))
   (gf-call.2c.1 c1)
   (gf-call.2c.1 c2))
