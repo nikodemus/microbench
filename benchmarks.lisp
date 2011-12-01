@@ -363,6 +363,9 @@
 
 ;;;; SLOT ACCESSORS
 
+(declaim (notinline opaque))
+(defun opaque (x) x)
+
 ;;; N classes, 1 slot location, one accessor generic
 (defmacro define-n-classes (n)
   (let ((slot (format-symbol *package* "N-CLASSES.~A.SLOT" n))
@@ -381,7 +384,7 @@
                  (make-instance (format-symbol *package* "N-CLASSES.~A-CLASS.~A" ,n i))))
       (defun ,test (list)
         (dolist (elt list)
-          (foo (,slot elt))
+          (opaque (,slot elt))
           (setf (,slot elt) 42)))
       (,test ,var)
       (,test ,var)
@@ -431,7 +434,7 @@
                                           ,n i))))
        (defun ,test (instances)
          (dolist (elt instances)
-           (foo (,slot elt))
+           (opaque (,slot elt))
            (setf (,slot elt) 42)))
        (,test ,var)
        (,test ,var)
