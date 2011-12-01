@@ -483,7 +483,7 @@ IF-DOES-NOT-EXIST defaults to NIL."
                                                                       :slanted-text true
                                                                       :slanted-text-angle 30)
                                                       :v-axis (create :log-scale log-scale
-                                                                      :min-value 0
+                                                                      :min-value 1
                                                                       :max-value max-value
                                                                       :title "Mi/s")))))))))))
          (:body
