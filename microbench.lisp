@@ -291,13 +291,23 @@ IF-DOES-NOT-EXIST defaults to NIL."
                  :escape t))))
     data))
 
+(defun expand-groups (groups)
+  (let (benchmarks)
+    (maphash (lambda (name info)
+               (when (member (getf (cdr info) :group) groups :test #'string=)
+                 (push name benchmarks)))
+             *benchmark-info*)
+    benchmarks))
+
 (defun run-benchmarks (&key run-time real-time iterations runs save (if-exists :error)
                             (verbose t)
-                            (select nil))
+                            (benchmarks nil)
+                            (groups nil))
   (let (results)
-    (dolist (name (if select
-                      (ensure-list select)
-                      (list-all-benchmarks)))
+    (dolist (name (if (and (not benchmarks) (not groups))
+                      (list-all-benchmarks)
+                      (union (ensure-list benchmarks)
+                             (expand-groups (ensure-list groups)))))
       (let ((res (run-benchmark name
                                 :runs runs
                                 :run-time run-time :real-time real-time

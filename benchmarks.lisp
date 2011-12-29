@@ -452,3 +452,113 @@
 (define-n-classes/2-slots 32)
 (define-n-classes/2-slots 128)
 (define-n-classes/2-slots 512)
+
+;;;; POSITION
+
+(defvar *a-vector-t* (make-array 10000 :element-type t :initial-element nil))
+(defvar *a-vector-bit-0* (make-array 10000 :element-type 'bit :initial-element 0))
+(defvar *a-vector-bit-1* (make-array 10000 :element-type 'bit :initial-element 1))
+(defvar *a-string* (make-array 10000 :element-type 'character :initial-element #\space))
+(defvar *a-base-string* (make-array 10000 :element-type 'base-char :initial-element #\space))
+(defvar *a-list* (make-list 10000 :initial-element nil))
+
+;;; Generic
+
+(defun generic-position (item seq from-end)
+  (if from-end
+      (position item seq :from-end t)
+      (position item seq)))
+
+(defbenchmark generic-position.simple-vector (:group generic-position)
+  (generic-position t *a-vector-t* nil))
+
+(defbenchmark generic-position.simple-vector.from-end (:group generic-position)
+  (generic-position t *a-vector-t* t))
+
+(defbenchmark generic-position.bit-vector.0 (:group generic-position)
+  (generic-position 0 *a-vector-bit-1* nil))
+
+(defbenchmark generic-position.bit-vector.0.from-end (:group generic-position)
+  (generic-position 0 *a-vector-bit-1* t))
+
+(defbenchmark generic-position.bit-vector.1 (:group generic-position)
+  (generic-position 1 *a-vector-bit-0* nil))
+
+(defbenchmark generic-position.bit-vector.1.from-end (:group generic-position)
+  (generic-position 1 *a-vector-bit-0* t))
+
+(defbenchmark generic-position.string (:group generic-position)
+  (generic-position #\x *a-string* nil))
+
+(defbenchmark generic-position.string.from-end (:group generic-position)
+  (generic-position #\x *a-string* t))
+
+(defbenchmark generic-position.base-string (:group generic-position)
+  (generic-position #\x *a-base-string* nil))
+
+(defbenchmark generic-position.base-string.from-end (:group generic-position)
+  (generic-position #\x *a-base-string* t))
+
+(defbenchmark generic-position.list (:group generic-position)
+  (generic-position t *a-list* nil))
+
+(defbenchmark generic-position.list.from-end (:group generic-position)
+  (generic-position t *a-list* t))
+
+;;; Specialized
+
+(defbenchmark position.simple-vector (:group position)
+  (declare (optimize speed))
+  (position t (the simple-vector *a-vector-t*)))
+
+(defbenchmark position.simple-vector.from-end (:group position)
+  (declare (optimize speed))
+  (position t (the simple-vector *a-vector-t*) :from-end t))
+
+(defbenchmark position.bit-vector.0 (:group position)
+  (declare (optimize speed))
+  (position 0 (the simple-bit-vector *a-vector-bit-1*)))
+
+(defbenchmark position.bit-vector.0.from-end (:group position)
+  (declare (optimize speed))
+  (position 0 (the simple-bit-vector *a-vector-bit-1*) :from-end t))
+
+(defbenchmark position.bit-vector.1 (:group position)
+  (declare (optimize speed))
+  (position 1 (the simple-bit-vector *a-vector-bit-0*)))
+
+(defbenchmark position.bit-vector.1.from-end (:group position)
+  (declare (optimize speed))
+  (position 1 (the simple-bit-vector *a-vector-bit-0*) :from-end t))
+
+(defbenchmark position.string (:group position)
+  (declare (optimize speed))
+  (position #\x (the string *a-string*)))
+
+(defbenchmark position.string.from-end (:group position)
+  (declare (optimize speed))
+  (position #\x (the string *a-string*) :from-end t))
+
+(defbenchmark position.character-string (:group position)
+  (declare (optimize speed))
+  (position #\x (the (simple-array character (*)) *a-string*)))
+
+(defbenchmark position.character-string.from-end (:group position)
+  (declare (optimize speed))
+  (position #\x (the (simple-array character (*)) *a-string*) :from-end t))
+
+(defbenchmark position.base-string (:group position)
+  (declare (optimize speed))
+  (position #\x (the (simple-array base-char (*)) *a-base-string*)))
+
+(defbenchmark position.base-string.from-end (:group position)
+  (declare (optimize speed))
+  (position #\x (the (simple-array base-char (*)) *a-base-string*) :from-end t))
+
+(defbenchmark position.list (:group position)
+  (declare (optimize speed))
+  (position t (the list *a-list*)))
+
+(defbenchmark position.list.from-end (:group position)
+  (declare (optimize speed))
+  (position t (the list *a-list*) :from-end t))
