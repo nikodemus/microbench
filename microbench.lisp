@@ -326,19 +326,18 @@ IF-DOES-NOT-EXIST defaults to NIL."
                                           (arch :wild)
                                           (os :wild)
                                           (group :wild))
-  (declare (ignore lisp version benchmark date hostname arch os))
+  (declare (ignore lisp version date hostname arch os))
   (let ((groups (ensure-list group))
         (benchmarks (ensure-list benchmark)))
     (when (listp benchmark)
       (remf args :benchmark))
     (mapcan (lambda (pathname)
               (let ((*package* (find-package :microbench)))
-                (let ((benchmark (read-file pathname :external-format :utf-8)))
-                  (when (and (or (eq group :wild)
-                                 (member (benchmark-group benchmark) groups))
-                             (or (eq benchmark :wild)
-                                 (member (benchmark-name bechmark) benchmarks)))
-                    (list benchmark)))))
+                (let ((data (read-file pathname :external-format :utf-8)))
+                  (when (or (and (eq group :wild) (eq benchmark :wild))
+                            (member (benchmark-group data) groups)
+                            (member (benchmark-name data) benchmarks))
+                    (list data)))))
             (directory
              (apply #'make-benchmark-pathname :allow-other-keys t args)))))
 
@@ -471,6 +470,8 @@ IF-DOES-NOT-EXIST defaults to NIL."
 
 (defun html-report (pathname dataset &key (type :barchart) (log-scale nil)
                                           (sort :run-time))
+  (unless dataset
+    (error "No data!"))
   (ecase type
     (:barchart
      (html-barchart dataset pathname log-scale sort))))
