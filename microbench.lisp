@@ -327,12 +327,17 @@ IF-DOES-NOT-EXIST defaults to NIL."
                                           (os :wild)
                                           (group :wild))
   (declare (ignore lisp version benchmark date hostname arch os))
-  (let ((groups (ensure-list group)))
+  (let ((groups (ensure-list group))
+        (benchmarks (ensure-list benchmark)))
+    (when (listp benchmark)
+      (remf args :benchmark))
     (mapcan (lambda (pathname)
               (let ((*package* (find-package :microbench)))
                 (let ((benchmark (read-file pathname :external-format :utf-8)))
-                  (when (or (eq group :wild)
-                            (member (benchmark-group benchmark) groups))
+                  (when (and (or (eq group :wild)
+                                 (member (benchmark-group benchmark) groups))
+                             (or (eq benchmark :wild)
+                                 (member (benchmark-name bechmark) benchmarks)))
                     (list benchmark)))))
             (directory
              (apply #'make-benchmark-pathname :allow-other-keys t args)))))
@@ -367,40 +372,58 @@ IF-DOES-NOT-EXIST defaults to NIL."
       (max a b)
       b))
 
-(defun js-k/s (benchmarks)
-  (let (min max)
-    (values `(array
-              ,@(mapcar (lambda (benchmark-set)
-                          (let ((x (car benchmark-set)))
-                            `(create
-                              :title
-                              ,(format nil "~A ~A ~A/~A (~A)"
-                                       (benchmark-lisp x)
-                                       (benchmark-version x)
-                                       (benchmark-os x)
-                                       (string-downcase (benchmark-arch x))
-                                       (benchmark-hostname x))
-                              :data
-                              (array
-                               ,@(mapcar (lambda (b)
-                                           (let ((name (benchmark-name b))
-                                                 (ips (benchmark-ips b :run-time 1f6)))
-                                             (setf min (min* min ips)
-                                                   max (max* max ips))
-                                             `(array ,(string-downcase name)
-                                                     ,ips)))
-                                         benchmark-set)))))
-                        benchmarks))
-            min
-            max)))
+(defun pick-scale (min)
+  (cond ((< min 1f3)
+         (values 1 ""))
+        ((< min 1f6)
+         (values 1f3 "thousand "))
+        ((< min 1f9)
+         (values 1f6 "million "))
+        (t
+         (values 1f9 "billion "))))
 
-(defun benchmark-ips (benchmark time &optional (scale 1))
+(defun js-benchmarks (benchmarks)
+  (let* ((min nil)
+         (max nil)
+         (benchmarks2
+           (mapcar (lambda (benchmark-set)
+                     (let ((x (car benchmark-set)))
+                       (list (format nil "~A ~A ~A/~A (~A)"
+                                     (benchmark-lisp x)
+                                     (benchmark-version x)
+                                     (benchmark-os x)
+                                     (string-downcase (benchmark-arch x))
+                                     (benchmark-hostname x))
+                             (mapcar (lambda (b)
+                                       (let ((name (benchmark-name b))
+                                             (ips (benchmark-ips b :run-time)))
+                                         (setf min (min* min ips)
+                                               max (max* max ips))
+                                         (list (string-downcase name) ips)))
+                                     benchmark-set))))
+                   benchmarks)))
+    (multiple-value-bind (scale scale-string) (pick-scale min)
+      (values `(array
+                ,@(mapcar (lambda (benchmark)
+                            (destructuring-bind (title data) benchmark
+                              `(create :title ,title
+                                       :data (array
+                                              ,@(mapcar
+                                                 (lambda (b)
+                                                   (destructuring-bind (name ips) b
+                                                     `(array ,name ,(/ ips scale))))
+                                                 data)))))
+                          benchmarks2))
+              (/ max scale)
+              scale-string))))
+
+(defun benchmark-ips (benchmark time)
   (let* ((plist (cdr benchmark))
          (total-time (/ (reduce #'+ (getf plist time))
                         (benchmark-scale benchmark)))
          (total-iterations (* (benchmark-iterations benchmark)
                               (benchmark-runs benchmark))))
-    (coerce (/ (/ total-iterations scale) total-time) 'single-float)))
+    (coerce (/ total-iterations total-time) 'single-float)))
 
 (defun benchmark-name< (b1 b2)
   (let ((g1 (benchmark-group b1) )
@@ -467,11 +490,11 @@ IF-DOES-NOT-EXIST defaults to NIL."
                    :src "https://www.google.com/jsapi")
           (:script :type "text/javascript"
                    (str
-                     (multiple-value-bind (js-data min max) (js-k/s sets)
-                       (declare (ignore min))
+                     (multiple-value-bind (js-data max scale) (js-benchmarks sets)
                        (js:js*
                         `(defvar benchmarks ,js-data)
                         `(defvar max-value ,max)
+                        `(defvar scale-string ,scale)
                         `(defvar log-scale ,log-scale))))
                    (str
                     (js:js
@@ -495,7 +518,8 @@ IF-DOES-NOT-EXIST defaults to NIL."
                                                       :v-axis (create :log-scale log-scale
                                                                       :min-value 1
                                                                       :max-value max-value
-                                                                      :title "Mi/s")))))))))))
+                                                                      :title (+ scale-string
+                                                                                "iterations/second"))))))))))))
          (:body
           (dolist (div divs)
             (htm
