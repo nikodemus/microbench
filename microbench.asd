@@ -21,6 +21,7 @@
   :author "Nikodemus Siivola <nikodemus@random-state.net>"
   :description "A microbenchmarking suite. Lies, benchamrks, and microbenchmarks."
   :license "MIT-0"
+  :serial t
   :components
   ((:file "microbench")
    (:file "benchmarks")))
