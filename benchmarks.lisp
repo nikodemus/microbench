@@ -18,6 +18,59 @@
 
 (in-package :microbench)
 
+;;;; VARARG RITHMETIC
+
+(defun vararg2 (fun a b)
+  (declare (function fun))
+  (declare (optimize (speed 3) (safety 0)))
+  (funcall fun a b))
+
+(defun vararg4 (fun a b c d)
+  (declare (function fun))
+  (declare (optimize (speed 3) (safety 0)))
+  (funcall fun a b c d))
+
+(defun vararg8 (fun a b c d e f g h)
+  (declare (function fun))
+  (declare (optimize (speed 3) (safety 0)))
+  (funcall fun a b c d e f g h))
+
+(defbenchmark vararg+[ff] (:group vararg+)
+  (vararg2 #'+ 123 907))
+
+(defbenchmark vararg+[ffff] (:group vararg+)
+  (vararg4 #'+ 121 -9 897 182736))
+
+(defbenchmark vararg+[ffffffff] (:group vararg+)
+  (vararg8 #'+ 121 -9 897 182736 -291837 123987 123 -123))
+
+(defbenchmark vararg+[ss] (:group vararg+)
+  (vararg2 #'+ 123.0f0 907.0f0))
+
+(defbenchmark vararg+[ssss] (:group vararg+)
+  (vararg4 #'+ 121.0f0 -9.0f0 897.0f0 182736.0f0))
+
+(defbenchmark vararg+[ssssssss] (:group vararg+)
+  (vararg8 #'+ 121.0f0 -9.0f0 897.0f0 182736.0f0 -291837.0f0 123987.0f0 123.0f0 -123.0f0))
+
+(defbenchmark vararg+[dd] (:group vararg+)
+  (vararg2 #'+ 123.0d0 907.0d0))
+
+(defbenchmark vararg+[dddd] (:group vararg+)
+  (vararg4 #'+ 121.0d0 -9.0d0 897.0d0 182736.0d0))
+
+(defbenchmark vararg+[dddddddd] (:group vararg+)
+  (vararg8 #'+ 121.0d0 -9.0d0 897.0d0 182736.0d0 -291837.0d0 123987.0d0 123.0d0 -123.0d0))
+
+(defbenchmark vararg+[fd] (:group vararg+)
+  (vararg2 #'+ 123 907.0d0))
+
+(defbenchmark vararg+[fsdf] (:group vararg+)
+  (vararg4 #'+ 121 -9.0f0 897.0d0 182736))
+
+(defbenchmark vararg+[fsdfsdfs] (:group vararg+)
+  (vararg8 #'+ 121 -9.0f0 897.0d0 182736 -291837.0f0 123987.0d0 123 -123.0f0))
+
 ;;;; GENERIC ARITHMETIC
 
 (defun generic+ (x y)
