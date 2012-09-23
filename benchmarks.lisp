@@ -1,4 +1,4 @@
-;;;; Copyright (c) 2011 Nikodemus Siivola <nikodemus@random-state.net>
+;;;; Copyright (c) 2012 Nikodemus Siivola <nikodemus@random-state.net>
 ;;;;
 ;;;; Permission is hereby granted, free of charge, to any person
 ;;;; obtaining a copy of this software and associated documentation files
@@ -562,3 +562,220 @@
 (defbenchmark position.list.from-end (:group position)
   (declare (optimize speed))
   (position t (the list *a-list*) :from-end t))
+
+;;;; STRING-OUTPUT-STREAM
+
+(defbenchmark string-output-stream.small (:group alloc)
+  (with-output-to-string (s)
+    (loop repeat 100
+          do (write-char #\. s))))
+
+(defbenchmark string-output-stream.medium (:group alloc)
+  (let ((line (make-string 99 :initial-element #\.)))
+    (with-output-to-string (s)
+      (loop repeat 100
+            do (write-line line s))))
+  nil)
+
+(defbenchmark string-output-stream.big (:group alloc)
+  (let ((line (make-string 99 :initial-element #\.)))
+    (with-output-to-string (s)
+      (loop repeat 10000
+            do (write-line line s)))))
+
+;;;; MAP
+
+(defun map-unknown (type f s1 s2)
+  (map type f s1 s2))
+
+(defun map-list (f s1 s2)
+  (map 'list f s1 s2))
+
+(defun map-vector (f s1 s2)
+  (map 'vector f s1 s2))
+
+(defun map-floats (f s1 s2)
+  (map '(vector single-float) f s1 s2))
+
+(defun arg-one (x y)
+  (declare (ignore y))
+  x)
+
+(defvar *list10* (make-list 10 :initial-element 10))
+(defvar *list100* (make-list 100 :initial-element 100))
+(defvar *list1000* (make-list 1000 :initial-element 1000))
+
+(defvar *vector10* (make-array 10 :initial-element 10))
+(defvar *vector100* (make-array 100 :initial-element 100))
+(defvar *vector1000* (make-array 1000 :initial-element 1000))
+
+(defvar *floats10* (make-array 10 :element-type 'single-float :initial-element 10.0))
+(defvar *floats100* (make-array 100 :element-type 'single-float :initial-element 100.0))
+(defvar *floats1000* (make-array 1000 :element-type 'single-float :initial-element 1000.0))
+
+(defbenchmark map.unknown.lists.10 (:group map)
+  (map-unknown 'list #'arg-one
+               *list10*
+               *list10*))
+
+(defbenchmark map.unknown.lists.100 (:group map)
+  (map-unknown 'list #'arg-one
+               *list100*
+               *list100*))
+
+(defbenchmark map.unknown.lists.1000 (:group map)
+  (map-unknown 'list #'arg-one
+               *list1000*
+               *list1000*))
+
+(defbenchmark map.unknown.vectors.10 (:group map)
+  (map-unknown 'vector #'arg-one
+               *vector10*
+               *vector10*))
+
+(defbenchmark map.unknown.vectors.100 (:group map)
+  (map-unknown 'vector #'arg-one
+               *vector100*
+               *vector100*))
+
+(defbenchmark map.unknown.vectors.1000 (:group map)
+  (map-unknown 'vector #'arg-one
+               *vector1000*
+               *vector1000*))
+
+(defbenchmark map.unknown.floats.10 (:group map)
+  (map-unknown '(vector single-float)
+               #'arg-one
+               *floats10*
+               *floats10*))
+
+(defbenchmark map.unknown.floats.100 (:group map)
+  (map-unknown '(vector single-float)
+               #'arg-one
+               *floats100*
+               *floats100*))
+
+(defbenchmark map.unknown.floats.1000 (:group map)
+  (map-unknown '(vector single-float)
+               #'arg-one
+               *floats1000*
+               *floats1000*))
+
+(defbenchmark map.lists.10 (:group map)
+  (map-list #'arg-one
+               *list10*
+               *list10*))
+
+(defbenchmark map.lists.100 (:group map)
+  (map-list #'arg-one
+            *list100*
+            *list100*))
+
+(defbenchmark map.lists.1000 (:group map)
+  (map-list #'arg-one
+            *list1000*
+            *list1000*))
+
+(defbenchmark map.vectors.10 (:group map)
+  (map-vector #'arg-one
+              *vector10*
+              *vector10*))
+
+(defbenchmark map.vectors.100 (:group map)
+  (map-vector #'arg-one
+       *vector100*
+       *vector100*))
+
+(defbenchmark map.vectors.1000 (:group map)
+  (map-vector #'arg-one
+              *vector1000*
+              *vector1000*))
+
+(defbenchmark map.floats.10 (:group map)
+  (map-floats #'arg-one
+               *floats10*
+               *floats10*))
+
+(defbenchmark map.floats.100 (:group map)
+  (map-floats #'arg-one
+              *floats100*
+              *floats100*))
+
+(defbenchmark map.floats.1000 (:group map)
+  (map-floats #'arg-one
+               *floats1000*
+               *floats1000*))
+
+;;;; MAP-INTO
+
+(defbenchmark map-into.list.10 (:group map-into)
+  (map-into *list10* #'identity *list10*))
+
+(defbenchmark map-into.list.100 (:group map-into)
+  (map-into *list100* #'identity *list100*))
+
+(defbenchmark map-into.list.1000 (:group map-into)
+  (map-into *list1000* #'identity *list1000*))
+
+(defbenchmark map-into.vector.10 (:group map-into)
+  (map-into *vector10* #'identity *vector10*))
+
+(defbenchmark map-into.vector.100 (:group map-into)
+  (map-into *vector100* #'identity *vector100*))
+
+(defbenchmark map-into.vector.1000 (:group map-into)
+  (map-into *vector1000* #'identity *vector1000*))
+
+(defbenchmark map-into.float.10 (:group map-into)
+  (map-into *floats10* #'identity *floats10*))
+
+(defbenchmark map-into.float.100 (:group map-into)
+  (map-into *floats100* #'identity *floats100*))
+
+(defbenchmark map-into.float.1000 (:group map-into)
+  (map-into *floats1000* #'identity *floats1000*))
+
+(defbenchmark map-into.lists.10 (:group map-into)
+  (map-into *list10* #'arg-one
+            *list10*
+            *list10*))
+
+(defbenchmark map-into.lists.100 (:group map-into)
+  (map-into *list100* #'arg-one
+            *list100*
+            *list100*))
+
+(defbenchmark map-into.lists.1000 (:group map-into)
+  (map-into *list1000* #'arg-one
+            *list1000*
+            *list1000*))
+
+(defbenchmark map-into.vectors.10 (:group map-into)
+  (map-into *vector10* #'arg-one
+            *vector10*
+            *vector10*))
+
+(defbenchmark map-into.vectors.100 (:group map-into)
+  (map-into *vector100* #'arg-one
+            *vector100*
+            *vector100*))
+
+(defbenchmark map-into.vectors.1000 (:group map-into)
+  (map-into *vector1000* #'arg-one
+            *vector1000*
+            *vector1000*))
+
+(defbenchmark map-into.floats.10 (:group map-into)
+  (map-into *floats10* #'arg-one
+            *floats10*
+            *floats10*))
+
+(defbenchmark map-into.floats.100 (:group map-into)
+  (map-into *floats100* #'arg-one
+            *floats100*
+            *floats100*))
+
+(defbenchmark map-into.floats.1000 (:group map-into)
+  (map-into *floats1000* #'arg-one
+            *floats1000*
+            *floats1000*))
