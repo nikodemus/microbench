@@ -218,11 +218,20 @@ IF-DOES-NOT-EXIST defaults to NIL."
         (when verbose
           (let ((real-total (/ (reduce #'+ real-time) internal-time-units-per-second))
                 (run-total (/ (reduce #'+ run-time) internal-time-units-per-second)))
-            (format *trace-output*
-                    ", ~,2Fs run-time, ~,2F% CPU~%  => ~,2FM/s.~%"
-                    run-total
-                    (* 100.0 (/ run-total real-total))
-                    (/ (/ (* runs iterations) 1f6) run-total)))
+            (when (zerop run-total)
+              (error "No time elapsed?!"))
+            (let ((per-second
+                    (/ (* runs iterations) run-total)))
+              (format *trace-output*
+                      ", ~,2Fs run-time, ~,2F% CPU~%  => ~,2F~A/s.~%"
+                      run-total
+                      (* 100.0 (/ run-total real-total))
+                      (if (> per-second 5000)
+                          (/ per-second 1f6)
+                          (/ per-second 1f3))
+                      (if (> per-second 5000)
+                          "M"
+                          "k"))))
           (finish-output *trace-output*))
         (list name :iterations iterations
                    :runs runs
