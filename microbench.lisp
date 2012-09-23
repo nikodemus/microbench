@@ -344,8 +344,8 @@ IF-DOES-NOT-EXIST defaults to NIL."
               (let ((*package* (find-package :microbench)))
                 (let ((data (read-file pathname :external-format :utf-8)))
                   (when (or (and (eq group :wild) (eq benchmark :wild))
-                            (member (benchmark-group data) groups)
-                            (member (benchmark-name data) benchmarks))
+                            (member (benchmark-group data) groups :test #'string=)
+                            (member (benchmark-name data) benchmarks :test #'string=))
                     (list data)))))
             (directory
              (apply #'make-benchmark-pathname :allow-other-keys t args)))))
